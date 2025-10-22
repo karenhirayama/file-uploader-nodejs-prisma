@@ -1,0 +1,611 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>File Uploader</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+      }
+      input,
+      button,
+      select {
+        padding: 8px 12px;
+        margin: 5px 0;
+      }
+      button {
+        cursor: pointer;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      button.danger {
+        background: #dc3545;
+      }
+      button.danger:hover {
+        background: #c82333;
+      }
+      .error {
+        color: red;
+      }
+      .success {
+        color: green;
+      }
+      .hidden {
+        display: none;
+      }
+      .file-item,
+      .folder-item {
+        border: 1px solid #ddd;
+        padding: 10px;
+        margin: 5px 0;
+        border-radius: 4px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .folder-item {
+        background: #f8f9fa;
+      }
+      .file-item {
+        background: #fff;
+      }
+      .item-info {
+        flex: 1;
+      }
+      .item-actions {
+        display: flex;
+        gap: 5px;
+      }
+      .folder-contents {
+        margin-left: 20px;
+        border-left: 2px solid #eee;
+        padding-left: 15px;
+      }
+      .file-size {
+        color: #666;
+        font-size: 0.9em;
+      }
+      .file-type {
+        color: #888;
+        font-size: 0.8em;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>File Uploader</h1>
+
+      <!-- Authentication Section -->
+      <div id="auth-section">
+        <div id="login-form">
+          <h2>Login</h2>
+          <form id="loginForm">
+            <div class="form-group">
+              <label>Email:</label>
+              <input type="email" id="loginEmail" required />
+            </div>
+            <div class="form-group">
+              <label>Password:</label>
+              <input type="password" id="loginPassword" required />
+            </div>
+            <button type="submit">Login</button>
+          </form>
+          <button onclick="showRegister()">Need an account? Register</button>
+        </div>
+
+        <div id="register-form" class="hidden">
+          <h2>Register</h2>
+          <form id="registerForm">
+            <div class="form-group">
+              <label>Name:</label>
+              <input type="text" id="registerName" required />
+            </div>
+            <div class="form-group">
+              <label>Email:</label>
+              <input type="email" id="registerEmail" required />
+            </div>
+            <div class="form-group">
+              <label>Password:</label>
+              <input type="password" id="registerPassword" required />
+            </div>
+            <button type="submit">Register</button>
+          </form>
+          <button onclick="showLogin()">Already have an account? Login</button>
+        </div>
+      </div>
+
+      <!-- Main App Section -->
+      <div id="app-section" class="hidden">
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          "
+        >
+          <h2>Welcome, <span id="user-name"></span>!</h2>
+          <button onclick="logout()">Logout</button>
+        </div>
+
+        <!-- Folder Management -->
+        <div>
+          <h3>Folders</h3>
+          <form id="folderForm">
+            <input
+              type="text"
+              id="folderName"
+              placeholder="Folder name"
+              required
+            />
+            <input
+              type="text"
+              id="folderDescription"
+              placeholder="Description (optional)"
+            />
+            <select id="parentFolder">
+              <option value="">Root Level (No Parent)</option>
+            </select>
+            <button type="submit">Create Folder</button>
+          </form>
+          <div id="folders-list"></div>
+        </div>
+
+        <!-- File Upload -->
+        <div>
+          <h3>Upload File</h3>
+          <form id="uploadForm" enctype="multipart/form-data">
+            <div class="form-group">
+              <label>Select Folder:</label>
+              <select id="uploadFolder">
+                <option value="">Root Folder</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Select File:</label>
+              <input type="file" id="fileInput" required />
+            </div>
+            <button type="submit">Upload File</button>
+          </form>
+        </div>
+
+        <!-- Files List -->
+        <div>
+          <h3>Files</h3>
+          <div id="files-list"></div>
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div id="message"></div>
+    </div>
+
+    <script>
+      const API_BASE = "/api";
+
+      // State management
+      let currentFolders = [];
+      let currentFiles = [];
+
+      // Authentication functions
+      async function login(email, password) {
+        try {
+          const response = await fetch(`${API_BASE}/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+
+          const data = await response.json();
+          if (response.ok) {
+            showApp();
+            loadUserData();
+            loadFolders();
+            loadFiles();
+          } else {
+            showMessage(data.error, "error");
+          }
+        } catch (error) {
+          showMessage("Login failed", "error");
+        }
+      }
+
+      async function register(name, email, password) {
+        try {
+          const response = await fetch(`${API_BASE}/auth/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, email, password }),
+          });
+
+          const data = await response.json();
+          if (response.ok) {
+            showApp();
+            loadUserData();
+            loadFolders();
+            loadFiles();
+            showMessage("Registration successful!", "success");
+          } else {
+            showMessage(data.error, "error");
+          }
+        } catch (error) {
+          showMessage("Registration failed", "error");
+        }
+      }
+
+      async function logout() {
+        try {
+          await fetch(`${API_BASE}/auth/logout`, { method: "POST" });
+          showAuth();
+          showMessage("Logged out successfully", "success");
+        } catch (error) {
+          showMessage("Logout failed", "error");
+        }
+      }
+
+      // Folder Management
+      async function loadFolders() {
+        try {
+          const response = await fetch(`${API_BASE}/folders`);
+          if (response.ok) {
+            currentFolders = await response.json();
+            renderFolders();
+            updateFolderSelects();
+          }
+        } catch (error) {
+          console.error("Failed to load folders:", error);
+        }
+      }
+
+      async function createFolder(name, description, parentId = null) {
+        try {
+          const response = await fetch(`${API_BASE}/folders`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, description, parentId }),
+          });
+
+          const data = await response.json();
+          if (response.ok) {
+            showMessage("Folder created successfully!", "success");
+            loadFolders();
+            document.getElementById("folderForm").reset();
+          } else {
+            showMessage(data.error, "error");
+          }
+        } catch (error) {
+          showMessage("Failed to create folder", "error");
+        }
+      }
+
+      async function deleteFolder(folderId) {
+        if (!confirm("Are you sure you want to delete this folder?")) return;
+
+        try {
+          const response = await fetch(`${API_BASE}/folders/${folderId}`, {
+            method: "DELETE",
+          });
+
+          const data = await response.json();
+          if (response.ok) {
+            showMessage("Folder deleted successfully!", "success");
+            loadFolders();
+            loadFiles();
+          } else {
+            showMessage(data.error, "error");
+          }
+        } catch (error) {
+          showMessage("Failed to delete folder", "error");
+        }
+      }
+
+      // File Management
+      async function loadFiles(folderId = null) {
+        try {
+          const url = folderId
+            ? `${API_BASE}/files?folderId=${folderId}`
+            : `${API_BASE}/files`;
+
+          const response = await fetch(url);
+          if (response.ok) {
+            currentFiles = await response.json();
+            renderFiles();
+          }
+        } catch (error) {
+          console.error("Failed to load files:", error);
+        }
+      }
+
+      async function uploadFile(file, folderId = null) {
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          if (folderId) {
+            formData.append("folderId", folderId);
+          }
+
+          const response = await fetch(`${API_BASE}/files/upload`, {
+            method: "POST",
+            body: formData,
+          });
+
+          const data = await response.json();
+          if (response.ok) {
+            showMessage("File uploaded successfully!", "success");
+            loadFiles();
+            document.getElementById("uploadForm").reset();
+          } else {
+            showMessage(data.error || "Upload failed", "error");
+          }
+        } catch (error) {
+          showMessage("File upload failed: " + error.message, "error");
+        }
+      }
+
+      async function deleteFile(fileId) {
+        if (!confirm("Are you sure you want to delete this file?")) return;
+
+        try {
+          const response = await fetch(`${API_BASE}/files/${fileId}`, {
+            method: "DELETE",
+          });
+
+          const data = await response.json();
+          if (response.ok) {
+            showMessage("File deleted successfully!", "success");
+            loadFiles();
+          } else {
+            showMessage(data.error, "error");
+          }
+        } catch (error) {
+          showMessage("Failed to delete file", "error");
+        }
+      }
+
+      async function downloadFile(fileId, fileName) {
+        try {
+          // This will redirect to the Cloudinary URL for download
+          window.open(`${API_BASE}/files/${fileId}/download`, "_blank");
+        } catch (error) {
+          showMessage("Failed to download file", "error");
+        }
+      }
+
+      // Rendering functions
+      function renderFolders() {
+        const foldersList = document.getElementById("folders-list");
+        foldersList.innerHTML = "";
+
+        if (currentFolders.length === 0) {
+          foldersList.innerHTML = "<p>No folders created yet.</p>";
+          return;
+        }
+
+        currentFolders.forEach((folder) => {
+          const folderElement = document.createElement("div");
+          folderElement.className = "folder-item";
+          folderElement.innerHTML = `
+            <div class="item-info">
+              <strong>${folder.name}</strong>
+              ${folder.description ? `<p>${folder.description}</p>` : ""}
+              <div>
+                <span class="file-size">
+                  ${folder._count.files} files, 
+                  ${folder._count.children} subfolders
+                </span>
+              </div>
+            </div>
+            <div class="item-actions">
+              <button onclick="loadFiles('${folder.id}')">View Files</button>
+              <button class="danger" onclick="deleteFolder('${
+                folder.id
+              }')">Delete</button>
+            </div>
+          `;
+          foldersList.appendChild(folderElement);
+        });
+      }
+
+      function renderFiles() {
+        const filesList = document.getElementById("files-list");
+        filesList.innerHTML = "";
+
+        if (currentFiles.length === 0) {
+          filesList.innerHTML = "<p>No files uploaded yet.</p>";
+          return;
+        }
+
+        currentFiles.forEach((file) => {
+          const fileElement = document.createElement("div");
+          fileElement.className = "file-item";
+
+          // Format file size
+          const fileSize =
+            file.size > 1024 * 1024
+              ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
+              : `${(file.size / 1024).toFixed(2)} KB`;
+
+          fileElement.innerHTML = `
+            <div class="item-info">
+              <strong>${file.originalName}</strong>
+              <div>
+                <span class="file-size">${fileSize}</span>
+                <span class="file-type">${file.mimeType}</span>
+                ${file.folder ? `<span> • In: ${file.folder.name}</span>` : ""}
+              </div>
+              <div>
+                <small>Uploaded: ${new Date(
+                  file.created_at
+                ).toLocaleDateString()}</small>
+              </div>
+            </div>
+            <div class="item-actions">
+              <button onclick="downloadFile('${file.id}', '${
+            file.originalName
+          }')">Download</button>
+              <button class="danger" onclick="deleteFile('${
+                file.id
+              }')">Delete</button>
+            </div>
+          `;
+          filesList.appendChild(fileElement);
+        });
+      }
+
+      function updateFolderSelects() {
+        const uploadFolderSelect = document.getElementById("uploadFolder");
+        const parentFolderSelect = document.getElementById("parentFolder");
+
+        // Clear existing options except the first one
+        while (uploadFolderSelect.children.length > 1) {
+          uploadFolderSelect.removeChild(uploadFolderSelect.lastChild);
+        }
+        while (parentFolderSelect.children.length > 1) {
+          parentFolderSelect.removeChild(parentFolderSelect.lastChild);
+        }
+
+        // Add folder options
+        currentFolders.forEach((folder) => {
+          const option1 = document.createElement("option");
+          option1.value = folder.id;
+          option1.textContent = folder.name;
+          uploadFolderSelect.appendChild(option1);
+
+          const option2 = document.createElement("option");
+          option2.value = folder.id;
+          option2.textContent = folder.name;
+          parentFolderSelect.appendChild(option2);
+        });
+      }
+
+      // UI Functions
+      function showAuth() {
+        document.getElementById("auth-section").classList.remove("hidden");
+        document.getElementById("app-section").classList.add("hidden");
+        currentFolders = [];
+        currentFiles = [];
+      }
+
+      function showApp() {
+        document.getElementById("auth-section").classList.add("hidden");
+        document.getElementById("app-section").classList.remove("hidden");
+      }
+
+      function showRegister() {
+        document.getElementById("login-form").classList.add("hidden");
+        document.getElementById("register-form").classList.remove("hidden");
+      }
+
+      function showLogin() {
+        document.getElementById("register-form").classList.add("hidden");
+        document.getElementById("login-form").classList.remove("hidden");
+      }
+
+      function showMessage(message, type) {
+        const messageEl = document.getElementById("message");
+        messageEl.textContent = message;
+        messageEl.className = type;
+        setTimeout(() => (messageEl.textContent = ""), 5000);
+      }
+
+      async function loadUserData() {
+        try {
+          const response = await fetch(`${API_BASE}/auth/me`);
+          if (response.ok) {
+            const data = await response.json();
+            document.getElementById("user-name").textContent = data.user.name;
+          }
+        } catch (error) {
+          console.error("Failed to load user data:", error);
+        }
+      }
+
+      // Event Listeners
+      document
+        .getElementById("loginForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const email = document.getElementById("loginEmail").value;
+          const password = document.getElementById("loginPassword").value;
+          await login(email, password);
+        });
+
+      document
+        .getElementById("registerForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const name = document.getElementById("registerName").value;
+          const email = document.getElementById("registerEmail").value;
+          const password = document.getElementById("registerPassword").value;
+          await register(name, email, password);
+        });
+
+      document
+        .getElementById("folderForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const name = document.getElementById("folderName").value;
+          const description =
+            document.getElementById("folderDescription").value;
+          const parentId =
+            document.getElementById("parentFolder").value || null;
+          await createFolder(name, description, parentId);
+        });
+
+      document
+        .getElementById("uploadForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const fileInput = document.getElementById("fileInput");
+          const folderId =
+            document.getElementById("uploadFolder").value || null;
+
+          if (fileInput.files.length > 0) {
+            await uploadFile(fileInput.files[0], folderId);
+          } else {
+            showMessage("Please select a file", "error");
+          }
+        });
+
+      // Check if user is already logged in
+      async function checkAuth() {
+        try {
+          const response = await fetch(`${API_BASE}/auth/me`);
+          if (response.ok) {
+            const data = await response.json();
+            showApp();
+            loadUserData();
+            loadFolders();
+            loadFiles();
+          } else {
+            showAuth();
+          }
+        } catch (error) {
+          showAuth();
+        }
+      }
+
+      // Initialize the app
+      checkAuth();
+    </script>
+  </body>
+</html>
