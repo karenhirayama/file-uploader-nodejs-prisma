@@ -16,28 +16,58 @@ router.get(
   async (req: express.Request, res: express.Response): Promise<void> => {
     try {
       const userId = (req.user as User)!.id;
-      const { folderId } = req.query;
+      const { folderId, page = "1", limit = "50", search, type } = req.query;
 
-      const files = await prisma.file.findMany({
-        where: {
-          folderId: (folderId as string) ?? '',
-          userId,
-        },
-        include: {
-          folder: {
-            select: {
-              id: true,
-              name: true,
+      const pageNum = parseInt(page as string);
+      const limitNum = parseInt(limit as string);
+      const skip = (pageNum - 1) * limitNum;
+
+      // Build where clause
+      const where: any = {
+        userId,
+        ...(folderId && { folderId: folderId as string }),
+        ...(search && {
+          OR: [
+            {
+              originalName: { contains: search as string, mode: "insensitive" },
+            },
+            { name: { contains: search as string, mode: "insensitive" } },
+          ],
+        }),
+        ...(type && { mimeType: { startsWith: type as string } }),
+      };
+
+      const [files, totalCount] = await Promise.all([
+        prisma.file.findMany({
+          where,
+          include: {
+            folder: {
+              select: {
+                id: true,
+                name: true,
+              },
             },
           },
-        },
-        orderBy: {
-          created_at: "desc",
+          orderBy: {
+            created_at: "desc",
+          },
+          skip,
+          take: limitNum,
+        }),
+        prisma.file.count({ where }),
+      ]);
+
+      res.status(200).json({
+        files,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          totalCount,
+          totalPages: Math.ceil(totalCount / limitNum),
+          hasNext: pageNum * limitNum < totalCount,
+          hasPrev: pageNum > 1,
         },
       });
-
-
-      res.status(200).json(files);
     } catch (error) {
       console.error("Get files error:", error);
       res.status(500).json({ error: "Failed to get files" });
@@ -79,8 +109,13 @@ router.post(
         }
       }
 
-      const cloudinaryUrl = await uploadToCloudinary(req.file.path);
+      const cloudinaryResult = await uploadToCloudinary(
+        req.file.path,
+        req.file.mimetype
+      );
       await fs.unlink(req.file.path);
+
+      console.log("cloudinaryResult", cloudinaryResult);
 
       const file = await prisma.file.create({
         data: {
@@ -88,9 +123,10 @@ router.post(
           originalName: req.file.originalname,
           size: req.file.size,
           mimeType: req.file.mimetype,
-          url: cloudinaryUrl,
+          url: cloudinaryResult.url,
           userId,
           folderId: folderId ?? null,
+          publicId: cloudinaryResult.publicId,
         },
       });
 
@@ -180,7 +216,10 @@ router.delete(
       }
 
       try {
-        await deleteFromCloudinary(file.url);
+        await deleteFromCloudinary(
+          file.url,
+          file.mimeType === "application/pdf" ? "raw" : "image"
+        );
         console.log(`Successfully deleted file from Cloudinary: ${file.name}`);
       } catch (cloudinaryError) {
         console.error("Failed to delete from Cloudinary:", cloudinaryError);

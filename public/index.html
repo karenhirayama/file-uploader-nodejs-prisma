@@ -327,7 +327,8 @@
 
           const response = await fetch(url);
           if (response.ok) {
-            currentFiles = await response.json();
+            const data = await response.json();
+            currentFiles = data.files;
             renderFiles();
           }
         } catch (error) {
@@ -383,8 +384,14 @@
 
       async function downloadFile(fileId, fileName) {
         try {
-          // This will redirect to the Cloudinary URL for download
-          window.open(`${API_BASE}/files/${fileId}/download`, "_blank");
+          // Method 1: Create hidden anchor tag (recommended)
+          const link = document.createElement("a");
+          link.href = `${API_BASE}/files/${fileId}/download`;
+          link.download = fileName; // This tells browser to download
+          link.style.display = "none";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
         } catch (error) {
           showMessage("Failed to download file", "error");
         }
