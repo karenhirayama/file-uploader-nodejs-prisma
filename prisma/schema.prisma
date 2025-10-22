@@ -6,10 +6,66 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String    @id @default(cuid())
+  name       String
+  email      String    @unique
+  password   String
+  created_at DateTime  @default(now())
+  folders    Folder[]
+  files      File[]
+  sessions   Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  sid       String   @unique
+  data      String
+  expiresAt DateTime
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Folder {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  created_at  DateTime @default(now())
+  update_at   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files       File[]
+  parentId    String?
+  parent      Folder?  @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children    Folder[] @relation("FolderHierarchy")
+
+  @@map("folders")
+}
+
+model File {
+  id           String   @id @default(cuid())
+  name         String
+  originalName String
+  size         Int
+  mimeType     String
+  url          String
+  created_at   DateTime @default(now())
+  update_at    DateTime @updatedAt
+  userId       String
+  folderId     String?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder       Folder?  @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@map("files")
 }
