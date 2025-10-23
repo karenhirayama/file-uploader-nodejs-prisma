@@ -96,4 +96,12 @@ router.post("/logout", (req: Request, res: Response, next: NextFunction): void =
   });
 });
 
+router.get('/me', (req, res) => {
+  if (req.isAuthenticated()) {
+    res.json({ user: req.user });
+  } else {
+    res.status(401).json({ error: 'Not authenticated' });
+  }
+});
+
 export default router;
