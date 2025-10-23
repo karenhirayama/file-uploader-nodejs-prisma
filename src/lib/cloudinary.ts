@@ -1,4 +1,3 @@
-//src/lib/cloudinary.ts
 import { v2 as cloudinary } from "cloudinary";
 import { ENV } from "../config/env";
 
@@ -18,29 +17,16 @@ cloudinary.config({
 });
 
 // src/lib/cloudinary.ts
-export const uploadToCloudinary = (filePath: string, originalMimetype?: string): Promise<CloudinaryUploadResult> => {
+export const uploadToCloudinary = (
+  filePath: string
+): Promise<CloudinaryUploadResult> => {
   return new Promise((resolve, reject) => {
-    // Determine resource type based on MIME type
-    let resourceType: "image" | "raw" | "auto" = "auto";
-    
-    // Force PDFs to be treated as raw files to prevent conversion
-    if (originalMimetype === 'application/pdf') {
-      resourceType = "raw";
-    }
-
     cloudinary.uploader.upload(
       filePath,
       {
-        resource_type: resourceType,
-        // For non-PDF files, keep your existing optimizations
-        ...(resourceType !== "raw" && {
-          quality: "auto",
-          fetch_format: "auto",
-        }),
-        // For PDFs, you might want to add pages if you want to extract images
-        ...(originalMimetype === 'application/pdf' && {
-          pages: true, // This will allow you to get individual pages if needed
-        }),
+        resource_type: "auto",
+        quality: "auto",
+        fetch_format: "auto",
       },
       (error, result) => {
         if (error || !result) {
@@ -71,7 +57,7 @@ export const extractPublicIdFromUrl = (url: string): string => {
   throw new Error(`Could not extract public ID from URL: ${url}`);
 };
 
-export const deleteFromCloudinary = (url: string, resourceType: string = "image"): Promise<void> => {
+export const deleteFromCloudinary = (url: string): Promise<void> => {
   return new Promise((resolve, reject) => {
     const publicId = extractPublicIdFromUrl(url);
 
@@ -80,17 +66,21 @@ export const deleteFromCloudinary = (url: string, resourceType: string = "image"
       return;
     }
 
-    cloudinary.uploader.destroy(publicId, { 
-      resource_type: resourceType === "raw" ? "raw" : "image" 
-    }, (error, result) => {
-      if (error) {
-        reject(error);
-      } else if (result.result !== "ok") {
-        reject(new Error(`Delete failed: ${result.result}`));
-      } else {
-        resolve();
+    cloudinary.uploader.destroy(
+      publicId,
+      {
+        resource_type: "auto",
+      },
+      (error, result) => {
+        if (error) {
+          reject(error);
+        } else if (result.result !== "ok") {
+          reject(new Error(`Delete failed: ${result.result}`));
+        } else {
+          resolve();
+        }
       }
-    });
+    );
   });
 };
 

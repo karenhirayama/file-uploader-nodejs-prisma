@@ -1,4 +1,3 @@
-// src/routes/files.ts
 import express from "express";
 import fs from "fs/promises";
 import { upload } from "../lib/upload";
@@ -22,7 +21,6 @@ router.get(
       const limitNum = parseInt(limit as string);
       const skip = (pageNum - 1) * limitNum;
 
-      // Build where clause
       const where: any = {
         userId,
         ...(folderId && { folderId: folderId as string }),
@@ -109,20 +107,15 @@ router.post(
         }
       }
 
-      const cloudinaryResult = await uploadToCloudinary(
-        req.file.path,
-        req.file.mimetype
-      );
+      const cloudinaryResult = await uploadToCloudinary(req.file.path);
       await fs.unlink(req.file.path);
-
-      console.log("cloudinaryResult", cloudinaryResult);
 
       const file = await prisma.file.create({
         data: {
           name: req.file.filename,
           originalName: req.file.originalname,
           size: req.file.size,
-          mimeType: req.file.mimetype,
+          mimeType: "auto",
           url: cloudinaryResult.url,
           userId,
           folderId: folderId ?? null,
@@ -134,7 +127,6 @@ router.post(
     } catch (error: any) {
       console.error("Upload error:", error);
 
-      // Clean up uploaded file if it exists
       if (req.file) {
         try {
           await fs.unlink(req.file.path);
@@ -143,7 +135,6 @@ router.post(
         }
       }
 
-      // Handle specific multer errors
       if (error.code === "LIMIT_FILE_SIZE") {
         res
           .status(400)
@@ -216,10 +207,7 @@ router.delete(
       }
 
       try {
-        await deleteFromCloudinary(
-          file.url,
-          file.mimeType === "application/pdf" ? "raw" : "image"
-        );
+        await deleteFromCloudinary(file.url);
         console.log(`Successfully deleted file from Cloudinary: ${file.name}`);
       } catch (cloudinaryError) {
         console.error("Failed to delete from Cloudinary:", cloudinaryError);
@@ -233,6 +221,42 @@ router.delete(
     } catch (error) {
       console.error("Delete file error:", error);
       res.status(500).json({ error: "Failed to delete file" });
+    }
+  }
+);
+
+router.get(
+  "/:id/download",
+  async (req: express.Request, res: express.Response): Promise<void> => {
+    try {
+      const userId = (req.user as User)!.id;
+      const fileId = req.params.id;
+
+      const file = await prisma.file.findFirst({
+        where: {
+          id: fileId,
+          userId,
+        },
+      });
+
+      if (!file) {
+        res.status(404).json({ error: "File not found" });
+        return;
+      }
+
+      // Set appropriate headers for download
+      res.setHeader("Content-Type", file.mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${file.originalName}"`
+      );
+      res.setHeader("Content-Length", file.size);
+
+      // For security, you might want to validate the URL or add additional checks
+      res.redirect(file.url);
+    } catch (error) {
+      console.error("Download file error:", error);
+      res.status(500).json({ error: "Failed to download file" });
     }
   }
 );
